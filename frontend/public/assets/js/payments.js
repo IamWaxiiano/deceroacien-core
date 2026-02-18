@@ -61,7 +61,7 @@
           endpoint = w.PublicAuthConfig.api.baseUrl + '/mp/create-preference';
         } else if ((w.location && /(^|\.)deceroacien\.app$/.test(w.location.hostname))) {
           // Fallback seguro en producción para evitar usar /api relativo (Vercel)
-          endpoint = 'https://api.deceroacien.app/api/mp/create-preference';
+          endpoint = 'https://api.deceroacien.cl/api/mp/create-preference';
         } else {
           endpoint = '/api/mp/create-preference';
         }

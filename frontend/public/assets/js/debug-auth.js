@@ -252,7 +252,7 @@
         try {
           const host = (window.location && window.location.hostname) || '';
           if (host === 'localhost' || host === '127.0.0.1') return '/api';
-          if (/(^|\.)deceroacien\.app$/.test(host)) return 'https://api.deceroacien.app/api';
+          if (/(^|\.)deceroacien\.app$/.test(host)) return 'https://api.deceroacien.cl/api';
         } catch {}
         return '/api';
       })();

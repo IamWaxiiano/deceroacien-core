@@ -165,7 +165,7 @@ const CONFIG = {
     <!-- Favicons y meta tags para redes sociales -->
     <meta property="og:title" content="{{TITLE}} - DE CERO A CIEN">
     <meta property="og:description" content="{{DESCRIPTION}}">
-    <meta property="og:url" content="https://deceroacien.app/{{FILENAME}}">
+    <meta property="og:url" content="https://deceroacien.cl/{{FILENAME}}">
     <meta name="twitter:card" content="summary_large_image">
     
     <!-- Preload de recursos críticos -->

@@ -45,7 +45,7 @@ Liderazgo
 - error sobre auth/me
 
 ## Enrutamientos .cl
-- cambiar deceroacien.app por deceroacien.cl de manera minuciosa cuidando no romper rutas.
+- cambiar deceroacien.cl por deceroacien.cl de manera minuciosa cuidando no romper rutas.
 
 ## ESTILOS
 - asociar estilos a docs legales

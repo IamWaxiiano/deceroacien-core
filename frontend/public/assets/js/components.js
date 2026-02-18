@@ -540,7 +540,7 @@ class HeaderComponent extends BaseComponent {
                     <a href="#" class="mobile-register-btn">Regístrate</a>
                 </div>
                <div class="mobile-menu-social" style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
-                 <a href="https://www.instagram.com/deceroacien.app/" class="mobile-social-link social-pill social-40" target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Instagram">
+                 <a href="https://www.instagram.com/deceroacien.cl/" class="mobile-social-link social-pill social-40" target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Instagram">
                      <i class="fa-brands fa-instagram" aria-hidden="true"></i>
                  </a>
                  <a href="https://www.linkedin.com/company/de-cero-a-cien-app/?viewAsMember=true" class="mobile-social-link social-pill social-40" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" title="LinkedIn">

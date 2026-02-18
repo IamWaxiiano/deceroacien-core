@@ -24,7 +24,7 @@ const SecureAuthConfig = {
     api: {
         baseUrl: window.location.hostname === 'localhost' 
             ? 'http://localhost:3001/api' 
-            : 'https://api.deceroacien.app/api',
+            : 'https://api.deceroacien.cl/api',
         endpoints: {
             login: '/auth/login',
             register: '/auth/register',
@@ -40,14 +40,14 @@ const SecureAuthConfig = {
 const Environment = {
     isDevelopment: window.location.hostname === 'localhost' || 
                    window.location.hostname === '127.0.0.1',
-    isProduction: window.location.hostname === 'deceroacien.app' || 
-                  window.location.hostname === 'www.deceroacien.app',
+    isProduction: window.location.hostname === 'deceroacien.cl' || 
+                  window.location.hostname === 'www.deceroacien.cl',
     
     getBaseUrl() {
         if (this.isDevelopment) {
             return 'http://localhost:3000';
         }
-        return 'https://deceroacien.app';
+        return 'https://deceroacien.cl';
     }
 };
 
