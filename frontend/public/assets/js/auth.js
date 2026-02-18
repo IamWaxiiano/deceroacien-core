@@ -344,7 +344,7 @@ class AuthManager {
         
         // Aquí iría tu lógica real de autenticación
         // Por ahora, simulamos una respuesta exitosa para demo
-        if (email === 'demo@deceroacien.app' && password === 'demo123') {
+        if (email === 'demo@deceroacien.cl' && password === 'demo123') {
             return {
                 success: true,
                 user: {

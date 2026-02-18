@@ -991,8 +991,8 @@ class FooterComponent extends BaseComponent {
                         <h3>Contacto</h3>
                         <ul>
                             <li><a href="tel:+56985678296" class="footer-link">+56 985 678 296</a></li>
-                <li><a href="mailto:hola@deceroacien.app" class="footer-link">hola@deceroacien.app</a></li>
-                <li><a href="https://deceroacien.app" target="_blank" class="footer-link">www.deceroacien.app</a></li>
+                <li><a href="mailto:hola@deceroacien.cl" class="footer-link">hola@deceroacien.cl</a></li>
+                <li><a href="https://deceroacien.cl" target="_blank" class="footer-link">www.deceroacien.cl</a></li>
                 <li><a href="${this.basePath}contacto.html" class="footer-link">Formulario de Contacto</a></li>
                         </ul>
                     </div>
@@ -1003,7 +1003,7 @@ class FooterComponent extends BaseComponent {
                     <p class="footer-copyright">© ${this.currentYear} DE CERO A CIEN. Todos los derechos reservados.</p>
                     <div class="footer-social" style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                         <span style="color: #94a3b8; font-size: 0.9rem;">Síguenos:</span>
-                        <a href="https://www.instagram.com/deceroacien.app/" class="footer-social-pill social-pill social-36" aria-label="Instagram" title="Instagram">
+                        <a href="https://www.instagram.com/deceroacien.cl/" class="footer-social-pill social-pill social-36" aria-label="Instagram" title="Instagram">
                             <i class="fa-brands fa-instagram" aria-hidden="true"></i>
                         </a>
                         <a href="https://www.linkedin.com/company/de-cero-a-cien-app/?viewAsMember=true" class="footer-social-pill social-pill social-36" aria-label="LinkedIn" title="LinkedIn">
