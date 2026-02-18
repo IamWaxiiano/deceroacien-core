@@ -3,3 +3,4 @@ pipfile.lock
 __pycache__/
 pipfile
 .venv/
+.vscode/

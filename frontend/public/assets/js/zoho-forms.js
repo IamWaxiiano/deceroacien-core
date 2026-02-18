@@ -85,9 +85,9 @@
       if (String(e && e.message) === 'invalid_email') {
         status.textContent = 'El correo no es válido. Por favor verifica e inténtalo de nuevo.';
       } else if (String(e && e.message) === 'zoho_not_configured') {
-        status.textContent = 'El sistema de contacto está en mantenimiento. Intenta más tarde o escribe a hola@deceroacien.app.';
+        status.textContent = 'El sistema de contacto está en mantenimiento. Intenta más tarde o escribe a hola@deceroacien.cl.';
       } else {
-        status.textContent = 'No pudimos enviar tu mensaje. Inténtalo más tarde o escribe a hola@deceroacien.app.';
+        status.textContent = 'No pudimos enviar tu mensaje. Inténtalo más tarde o escribe a hola@deceroacien.cl.';
       }
     } finally {
       form.querySelectorAll('input,textarea,select,button').forEach(el => el.disabled = false);
