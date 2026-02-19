@@ -37,13 +37,11 @@
   'test.clp500': { href: '/pago-prueba.html', label: 'Comprar prueba $500' },
   // Nuevos productos macro
   'product.deceroacien': { href: '/de-cero-a-cien.html', label: 'Comprar De Cero a Cien' },
-  'product.camino_dorado': { href: '/camino-dorado.html', label: 'Comprar Camino Dorado' }
   };
 
   // CTAs para fases internas (apuntan al producto principal). Facilita mostrar botón correcto si se usa data-entitlement="decero.fase1" etc.
   ['1','2','3','4','5'].forEach(n => {
     PRODUCT_CTAS['decero.fase'+n] = { href: '/de-cero-a-cien.html', label: 'Comprar De Cero a Cien' };
-    PRODUCT_CTAS['camino.fase'+n] = { href: '/camino-dorado.html', label: 'Comprar Camino Dorado' };
   });
 
   function readEntitlements() {
@@ -257,18 +255,6 @@
 // =============================
 (function (w) {
   const PATH_GUARD = [
-    // Academy (mantiene course.*)
-    { test: /\/fase_1_ecd\//i, required: ['course.pmv'] },
-    { test: /\/fase_2_ecd\//i, required: ['course.pmv'] },
-    { test: /\/fase_3_ecd\//i, required: ['course.pmf'] },
-    { test: /\/fase_4_ecd\//i, required: ['course.growth'] },
-    { test: /\/fase_5_ecd\//i, required: ['course.ceo'] },
-    // Camino Dorado (granular camino.faseX). Respetar index libre, sólo bloquear archivos internos
-    { test: /\/camino-dorado-fases\/fase-1-ecd\/(?!index\.html)([^/?#]+)/i, required: ['camino.fase1'] },
-    { test: /\/camino-dorado-fases\/fase-2-ecd\/(?!index\.html)([^/?#]+)/i, required: ['camino.fase2'] },
-    { test: /\/camino-dorado-fases\/fase-3-ecd\/(?!index\.html)([^/?#]+)/i, required: ['camino.fase3'] },
-    { test: /\/camino-dorado-fases\/fase-4-ecd\/(?!index\.html)([^/?#]+)/i, required: ['camino.fase4'] },
-    { test: /\/camino-dorado-fases\/fase-5-ecd\/(?!index\.html)([^/?#]+)/i, required: ['camino.fase5'] },
   // De Cero a Cien (granular decero.faseX) — soporta legacy y canónico
   { test: /\/(de-cero-a-cien-fases\/)?fase[-_]1[-_]de0a100\//i, required: ['decero.fase1'] },
   { test: /\/(de-cero-a-cien-fases\/)?fase[-_]2[-_]de0a100\//i, required: ['decero.fase2'] },
