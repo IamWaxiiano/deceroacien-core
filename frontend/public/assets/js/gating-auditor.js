@@ -17,7 +17,6 @@
   if (w.GatingAuditor) return; // evitar doble inclusión
 
   const PROTECTED_PATTERNS = [
-    /\/camino-dorado-fases\/fase-[1-5]-ecd\/(?!index\.html).+\.html/i,
     // De Cero a Cien (canónico con guiones y legacy con guion bajo)
     /\/(?:de-cero-a-cien-fases\/)?fase-[1-5]-de0a100\/(?!index\.html).+\.html/i,
     /\/(?:de-cero-a-cien-fases\/)?fase_[1-5]_de0a100\/(?!index\.html).+\.html/i
@@ -25,11 +24,6 @@
 
   // Index pages (desde aquí se intentará descubrir herramientas enlazadas)
   const PHASE_INDEX_PAGES = [
-    '/camino-dorado-fases/fase-1-ecd/index.html',
-    '/camino-dorado-fases/fase-2-ecd/index.html',
-    '/camino-dorado-fases/fase-3-ecd/index.html',
-    '/camino-dorado-fases/fase-4-ecd/index.html',
-    '/camino-dorado-fases/fase-5-ecd/index.html',
     // Canónico
     '/de-cero-a-cien-fases/fase-1-de0a100/index.html',
     '/de-cero-a-cien-fases/fase-2-de0a100/index.html',
