@@ -50,3 +50,10 @@ Liderazgo
 ## ESTILOS
 - asociar estilos a docs legales
 
+## revision y correccion
+eliminar sobrantes no asociados a de0a100
+correcciones de ruta de imagenes de todos los archivos del front
+verificar debug-auth.js & components.js
+crear autenticacion real auth.js
+
+
