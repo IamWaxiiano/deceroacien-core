@@ -4,4 +4,4 @@ __pycache__/
 pipfile
 .venv/
 .vscode/
-frontend\public\assets\js\updateScript.js
+frontend/public/assets/js/updateScript.js
