@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { jwtVerify } from 'jose';
 import { Pool } from 'pg';
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
@@ -15,8 +14,6 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,h
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || '';
-const MP_INTEGRATOR_ID = process.env.MP_INTEGRATOR_ID || '';
 const PUBLIC_API_BASE = process.env.PUBLIC_API_BASE || '';
 const PUBLIC_SITE_BASE = process.env.PUBLIC_SITE_BASE || 'https://www.deceroacien.cl';
 const GRANT_SECRET = process.env.GRANT_SECRET || '';
@@ -29,12 +26,6 @@ const PUBLIC_SUPABASE_ANON_KEY = process.env.PUBLIC_SUPABASE_ANON_KEY || '';
 // Cuando Supabase emite tokens HS256 (por defecto), debemos verificar con el secreto del proyecto
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
 // Nota: Si en el futuro se usa RS256, agregar verificación vía JWKS (no necesaria hoy)
-// Parámetros de pago (configurables por entorno)
-const MP_INSTALLMENTS = Number(process.env.MP_INSTALLMENTS || 6);
-const _EXC = (process.env.MP_EXCLUDE_PAYMENT_METHODS ?? '');
-const MP_EXCLUDED_PAYMENT_METHODS = _EXC
-  ? _EXC.split(',').map(s => s.trim()).filter(Boolean).map(id => ({ id }))
-  : [];
 // Email (opcional)
 const SMTP_URL = process.env.SMTP_URL || '';
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -51,6 +42,10 @@ const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID || '';
 const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET || '';
 const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN || '';
 const ZOHO_DC = (process.env.ZOHO_DC || 'com').toLowerCase(); // com | eu | in | com.au | jp
+// Payku (pasarela de pagos Chile)
+const PAYKU_PUBLIC_TOKEN = process.env.PAYKU_PUBLIC_TOKEN || '';
+const PAYKU_PRIVATE_TOKEN = process.env.PAYKU_PRIVATE_TOKEN || ''; // para firmas HMAC
+const PAYKU_BASE_URL = (process.env.PAYKU_BASE_URL || 'https://app.payku.cl').replace(/\/+$/, '');
 
 // Firebase Admin eliminado: verificación y autenticación ahora son exclusivamente vía Supabase
 
@@ -256,6 +251,30 @@ async function ensureSchema() {
         notes TEXT,
         created_at TIMESTAMPTZ DEFAULT now()
       );
+      -- Payku transactions
+      CREATE TABLE IF NOT EXISTS payku_transactions (
+        id TEXT PRIMARY KEY,
+        order_id TEXT,
+        payku_transaction_id TEXT,
+        payment_key TEXT,
+        transaction_key TEXT,
+        verification_key TEXT,
+        email TEXT,
+        subject TEXT,
+        amount NUMERIC,
+        currency TEXT DEFAULT 'CLP',
+        status TEXT,
+        gateway TEXT DEFAULT 'payku',
+        notify_url TEXT,
+        return_url TEXT,
+        payku_url TEXT,
+        raw_create JSONB,
+        raw_notify JSONB,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS payku_tx_order_idx ON payku_transactions (order_id);
+      CREATE INDEX IF NOT EXISTS payku_tx_email_idx ON payku_transactions (email);
       -- Parámetros de administración (globales)
       CREATE TABLE IF NOT EXISTS admin_params (
         id TEXT PRIMARY KEY,
@@ -1396,6 +1415,69 @@ async function sendEmail({ to, subject, html }) {
 }
 
 // ==============================
+// Payku: helpers
+// ==============================
+
+/**
+ * Crea una transacción en Payku.
+ * POST {PAYKU_BASE_URL}/api/transaction
+ * Docs: Bearer token = PAYKU_PUBLIC_TOKEN
+ */
+async function createPaykuTransaction({ email, order, subject, amount, currency = 'CLP', paymentId = null, urlreturn, urlnotify }) {
+  const url = `${PAYKU_BASE_URL}/api/transaction`;
+  const body = {
+    email,
+    order: order || `pk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    subject: subject || 'Producto De Cero a Cien',
+    amount: Number(amount),
+    currency,
+    payment: paymentId || 1, // 1 = Webpay, null = mostrar todos
+    urlreturn: urlreturn || `${PUBLIC_SITE_BASE}/pago-id.html`,
+    urlnotify: urlnotify || `${PUBLIC_SITE_BASE}/api/payku/webhook`
+  };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${PAYKU_PUBLIC_TOKEN}`
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(`Payku create error ${resp.status}: ${JSON.stringify(data)}`);
+  }
+  return data; // { id, url, token ... } según API
+}
+
+/**
+ * Consulta estado de transacción Payku.
+ * GET {PAYKU_BASE_URL}/api/transaction/{id}
+ */
+async function getPaykuTransaction(transactionId) {
+  const url = `${PAYKU_BASE_URL}/api/transaction/${encodeURIComponent(transactionId)}`;
+  const resp = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${PAYKU_PUBLIC_TOKEN}`
+    }
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(`Payku get error ${resp.status}: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+/**
+ * Genera firma HMAC SHA256 para endpoints que la requieren (nullify, subscriptions).
+ */
+function generatePaykuSignature(payload) {
+  const sorted = Object.keys(payload).sort().map(k => `${k}=${payload[k]}`).join('&');
+  return crypto.createHmac('sha256', PAYKU_PRIVATE_TOKEN).update(sorted).digest('hex');
+}
+
+// ==============================
 // Google Meet: join con registro de asistencia
 // ==============================
 router.get('/meet/join', async (req, res) => {
@@ -2073,6 +2155,390 @@ router.get('/mp/verify-grant', async (req, res) => {
     return res.json({ ok: true });
   } catch {
     return res.json({ ok: false });
+  }
+});
+
+// ==============================
+// Payku: endpoints de transacción
+// ==============================
+
+/**
+ * POST /payku/create-transaction
+ * Body: { items: ['sku1'] | [{title,unit_price,...}], user?: {id,email}, email?: string, metadata?: {} }
+ * Acepta usuario autenticado (registrado) o email de invitado (no registrado).
+ */
+router.post('/payku/create-transaction', async (req, res) => {
+  try {
+    if (!PAYKU_PUBLIC_TOKEN) return res.status(503).json({ error: 'payku_unavailable', message: 'Payku no está configurado' });
+
+    const { items = [], user = {}, email: guestEmail = null, metadata = {} } = req.body || {};
+    const referer = req.headers['referer'] || '';
+    const siteBase = inferSiteBase(req, referer);
+
+    // Intentar obtener usuario autenticado si hay token
+    let authedUser = null;
+    try {
+      authedUser = await verifyBearer(req);
+    } catch {}
+
+    const userId = authedUser?.uid || authedUser?.user_id || authedUser?.sub || user?.id || null;
+    const userEmail = authedUser?.email || user?.email || guestEmail || null;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'email_required', message: 'Se requiere un email para procesar el pago' });
+    }
+
+    // Cargar pricing.json
+    let pricing = null;
+    try {
+      const pricingPath = path.join(process.cwd(), 'assets', 'config', 'pricing.json');
+      const raw = fs.readFileSync(pricingPath, 'utf-8');
+      pricing = JSON.parse(raw);
+    } catch (e) {
+      console.warn('[api] No se pudo leer assets/config/pricing.json:', e?.message || e);
+    }
+
+    // Resolver items a objetos completos
+    const resolvedItems = (items || []).map(it => {
+      const isSku = typeof it === 'string';
+      let sku = isSku ? it : (it.id || it.sku || null);
+      let def = null;
+      if (pricing && sku && pricing.products && pricing.products[sku]) {
+        def = pricing.products[sku];
+      }
+      return {
+        sku: sku || 'item',
+        title: (isSku && def?.title) || it.title || it.name || 'Producto',
+        unit_price: Number((isSku && def?.unit_price) || it.unit_price || it.price || 0),
+        quantity: Number(it.quantity || 1),
+        currency: (pricing?.currency) || it.currency || 'CLP'
+      };
+    });
+
+    // Validar SKUs
+    if ((items || []).some(s => typeof s === 'string')) {
+      if (!pricing || !pricing.products) {
+        return res.status(400).json({ error: 'invalid_items', message: 'SKUs enviados sin pricing.json disponible' });
+      }
+      const invalid = (items || []).filter(s => typeof s === 'string' && !pricing.products[s]);
+      if (invalid.length) {
+        return res.status(400).json({ error: 'invalid_items', items: invalid });
+      }
+    }
+
+    const orderTotal = resolvedItems.reduce((s, it) => s + it.unit_price * it.quantity, 0);
+    if (orderTotal <= 0) {
+      return res.status(400).json({ error: 'invalid_amount', message: 'El monto debe ser mayor a 0' });
+    }
+
+    // Entitlements a otorgar
+    const entitlements = resolvedItems.map(it => mapItemToEntitlement(it)).filter(Boolean);
+
+    // Crear orden en DB
+    const orderId = `ord_pk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const md = { user_id: userId, email: userEmail, entitlements, gateway: 'payku', ...metadata };
+
+    if (pool) {
+      try {
+        await ensureSchema();
+        await pool.query(
+          'INSERT INTO orders (id, user_id, email, items, total, currency, status, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+          [orderId, userId || null, userEmail, JSON.stringify(resolvedItems), orderTotal, resolvedItems[0]?.currency || 'CLP', 'created', JSON.stringify(md)]
+        );
+      } catch (e) { console.warn('[api] crear orden payku falló:', e?.message || e); }
+    }
+
+    // Construir urls
+    const returnUrl = `${siteBase}/pago-id.html?gateway=payku&order=${orderId}`;
+    const notifyHost = PUBLIC_API_BASE || `${siteBase}/api`;
+    const notifyUrl = `${notifyHost}/payku/webhook`;
+
+    const subject = resolvedItems.map(it => it.title).join(' + ');
+
+    // Crear transacción en Payku
+    const paykuResp = await createPaykuTransaction({
+      email: userEmail,
+      order: orderId,
+      subject: subject.substring(0, 200),
+      amount: orderTotal,
+      currency: resolvedItems[0]?.currency || 'CLP',
+      urlreturn: returnUrl,
+      urlnotify: notifyUrl
+    });
+
+    // Guardar transacción Payku en DB
+    const paykuTxId = `pktx_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    if (pool) {
+      try {
+        await pool.query(
+          `INSERT INTO payku_transactions (id, order_id, payku_transaction_id, email, subject, amount, currency, status, notify_url, return_url, payku_url, raw_create)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [paykuTxId, orderId, paykuResp.id || null, userEmail, subject, orderTotal,
+           resolvedItems[0]?.currency || 'CLP', 'pending', notifyUrl, returnUrl,
+           paykuResp.url || null, JSON.stringify(paykuResp)]
+        );
+      } catch (e) { console.warn('[api] guardar payku_transactions falló:', e?.message || e); }
+    }
+
+    // Actualizar orden con referencia Payku
+    if (pool) {
+      try {
+        await pool.query('UPDATE orders SET preference_id=$1, status=$2, updated_at=now() WHERE id=$3',
+          [paykuResp.id || paykuTxId, 'pending', orderId]);
+      } catch (e) { console.warn('[api] actualizar orden payku falló:', e?.message || e); }
+    }
+
+    return res.json({
+      ok: true,
+      payku_id: paykuResp.id || null,
+      url: paykuResp.url || null,
+      order_id: orderId,
+      token: paykuResp.token || null
+    });
+  } catch (e) {
+    console.error('[api] payku/create-transaction error:', e?.message || e);
+    return res.status(500).json({ error: 'payku_error', message: e?.message || String(e) });
+  }
+});
+
+/**
+ * GET /payku/transaction/:id — Consulta estado de transacción Payku
+ */
+router.get('/payku/transaction/:id', async (req, res) => {
+  try {
+    if (!PAYKU_PUBLIC_TOKEN) return res.status(503).json({ error: 'payku_unavailable' });
+    const txId = req.params.id;
+    if (!txId) return res.status(400).json({ error: 'missing_id' });
+
+    const data = await getPaykuTransaction(txId);
+    return res.json({ ok: true, transaction: data });
+  } catch (e) {
+    console.error('[api] payku/transaction/:id error:', e?.message || e);
+    return res.status(500).json({ error: 'payku_error', message: e?.message || String(e) });
+  }
+});
+
+/**
+ * POST /payku/webhook — Recibe notificación de Payku (urlnotify)
+ * Payku envía: { transaction_id, payment_key, transaction_key, verification_key, order, status, ... }
+ * Los nombres de campos pueden variar; manejamos ambos formatos.
+ */
+router.post('/payku/webhook', async (req, res) => {
+  try {
+    console.log('[api] payku/webhook recibido:', JSON.stringify(req.body || {}));
+
+    const body = req.body || {};
+    // Payku puede enviar transaction_id o id
+    const transactionId = body.transaction_id || body.id || null;
+    const paymentKey = body.payment_key || null;
+    const transactionKey = body.transaction_key || null;
+    const verificationKey = body.verification_key || null;
+    const orderFromBody = body.order || null;
+    const statusFromBody = (body.status || '').toString().toLowerCase();
+
+    if (!transactionId) {
+      console.warn('[api] payku/webhook: sin transaction_id');
+      return res.status(200).json({ ok: true, warning: 'no_transaction_id' });
+    }
+
+    // Log webhook event
+    if (pool) {
+      try {
+        await ensureSchema();
+        const evId = `wh_pk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+        await pool.query('INSERT INTO webhook_events (id, topic, resource_id, payload) VALUES ($1,$2,$3,$4)',
+          [evId, 'payku', transactionId, JSON.stringify(body)]);
+      } catch (e) { console.warn('[api] guardar webhook_events payku falló:', e?.message || e); }
+    }
+
+    // Consultar estado real en Payku para verificar (no confiar solo en el body)
+    let paykuTx = null;
+    try {
+      paykuTx = await getPaykuTransaction(transactionId);
+    } catch (e) {
+      console.warn('[api] payku/webhook: no se pudo verificar transacción:', e?.message || e);
+      // Si no se puede consultar, usamos los datos del body pero con precaución
+    }
+
+    const verifiedStatus = (paykuTx?.status || statusFromBody || '').toString().toLowerCase();
+    const txEmail = paykuTx?.email || body.email || null;
+    const txOrder = paykuTx?.order || orderFromBody || null;
+    const txAmount = paykuTx?.amount || body.amount || null;
+
+    // Actualizar payku_transactions con datos de la notificación
+    if (pool && txOrder) {
+      try {
+        await pool.query(
+          `UPDATE payku_transactions SET
+            payment_key = COALESCE($1, payment_key),
+            transaction_key = COALESCE($2, transaction_key),
+            verification_key = COALESCE($3, verification_key),
+            status = $4,
+            raw_notify = $5,
+            updated_at = now()
+           WHERE order_id = $6`,
+          [paymentKey, transactionKey, verificationKey, verifiedStatus, JSON.stringify(body), txOrder]
+        );
+      } catch (e) { console.warn('[api] actualizar payku_transactions falló:', e?.message || e); }
+    }
+
+    // Solo procesar si el pago fue exitoso
+    const isSuccess = verifiedStatus === 'success' || verifiedStatus === 'approved' || verifiedStatus === 'completed';
+    if (!isSuccess) {
+      console.log(`[api] payku/webhook: transacción ${transactionId} status=${verifiedStatus}, no procesamos entitlements`);
+      return res.status(200).json({ ok: true, status: verifiedStatus });
+    }
+
+    // Idempotencia: verificar si ya procesamos este pago
+    const paymentIdKey = `payku_${transactionId}`;
+    let isNew = true;
+    if (pool) {
+      try {
+        await pool.query('INSERT INTO processed_payments (payment_id) VALUES ($1) ON CONFLICT (payment_id) DO NOTHING', [paymentIdKey]);
+        const chk = await pool.query('SELECT payment_id FROM processed_payments WHERE payment_id=$1', [paymentIdKey]);
+        isNew = !!chk.rowCount;
+      } catch (e) { console.warn('[api] processed_payments payku falló:', e?.message || e); }
+    }
+
+    if (!isNew) {
+      console.log(`[api] payku/webhook: pago ${paymentIdKey} ya procesado`);
+      return res.status(200).json({ ok: true, already_processed: true });
+    }
+
+    // Obtener metadata de la orden para saber qué entitlements otorgar
+    let orderMd = {};
+    let userId = null;
+    let email = txEmail;
+    if (pool && txOrder) {
+      try {
+        const orderRow = await pool.query('SELECT user_id, email, metadata FROM orders WHERE id=$1', [txOrder]);
+        if (orderRow.rows[0]) {
+          userId = orderRow.rows[0].user_id || null;
+          email = email || orderRow.rows[0].email;
+          orderMd = orderRow.rows[0].metadata || {};
+          if (typeof orderMd === 'string') orderMd = JSON.parse(orderMd);
+        }
+      } catch (e) { console.warn('[api] leer orden payku falló:', e?.message || e); }
+    }
+
+    const entitlements = orderMd.entitlements || [];
+
+    // Registrar pago y actualizar orden
+    if (pool) {
+      try {
+        await pool.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', ['paid', txOrder]);
+        await pool.query(
+          'INSERT INTO payments (id, order_id, status, amount, currency, method, raw) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING',
+          [paymentIdKey, txOrder, 'approved', txAmount, 'CLP', 'payku', JSON.stringify(paykuTx || body)]
+        );
+      } catch (e) { console.warn('[api] registrar pago payku falló:', e?.message || e); }
+    }
+
+    // *** AUTO-CREACIÓN DE CUENTA ***
+    // Si el usuario no tiene cuenta (userId === null), buscar por email o crear pending_grants
+    if (!userId && email && pool) {
+      try {
+        // Buscar si existe un usuario con ese email
+        const existingUser = await pool.query('SELECT id FROM users WHERE email=$1 LIMIT 1', [email]);
+        if (existingUser.rows[0]) {
+          userId = existingUser.rows[0].id;
+        } else {
+          // No existe usuario: crear pending_grants para que al registrarse obtenga acceso automáticamente
+          if (entitlements.length) {
+            await pool.query(
+              `INSERT INTO pending_grants (email, entitlements, notes)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (email) DO UPDATE
+                 SET entitlements = (
+                   SELECT ARRAY(SELECT DISTINCT UNNEST(pending_grants.entitlements || EXCLUDED.entitlements))
+                 ),
+                 notes = COALESCE(EXCLUDED.notes, pending_grants.notes)`,
+              [email, entitlements, `Auto-creado por pago Payku ${transactionId} el ${new Date().toISOString()}`]
+            );
+          }
+          console.log(`[api] payku/webhook: usuario ${email} no registrado, pending_grants creado`);
+        }
+      } catch (e) { console.warn('[api] auto-creación payku falló:', e?.message || e); }
+    }
+
+    // Otorgar accesos si tenemos userId
+    if (userId && entitlements.length) {
+      await grantEntitlements({ userId, email, entitlements });
+    }
+
+    // Email transaccional
+    if (email) {
+      const registrationLink = `${PUBLIC_SITE_BASE}/auth/register.html?email=${encodeURIComponent(email)}&ref=payku`;
+      const portalLink = `${PUBLIC_SITE_BASE}/portal-alumno.html`;
+      const isRegistered = !!userId;
+
+      const emailHtml = isRegistered
+        ? `<p>¡Gracias por tu compra!</p>
+           <p>Tu pago por <strong>$${Number(txAmount).toLocaleString('es-CL')}</strong> fue aprobado exitosamente vía Payku.</p>
+           <p>Ya puedes acceder al Portal del Alumno:</p>
+           <p><a href="${portalLink}" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Ir al Portal</a></p>`
+        : `<p>¡Gracias por tu compra!</p>
+           <p>Tu pago por <strong>$${Number(txAmount).toLocaleString('es-CL')}</strong> fue aprobado exitosamente vía Payku.</p>
+           <p>Para acceder a tu contenido, crea tu cuenta con el mismo email (<strong>${email}</strong>):</p>
+           <p><a href="${registrationLink}" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Crear mi cuenta</a></p>
+           <p style="color:#888;font-size:13px">Al registrarte con este email, tu acceso se activará automáticamente.</p>`;
+
+      await sendEmail({
+        to: email,
+        subject: 'Tu pago fue aprobado – De Cero a Cien',
+        html: emailHtml
+      });
+    }
+
+    console.log(`[api] payku/webhook: transacción ${transactionId} procesada OK (userId=${userId}, email=${email}, ents=${entitlements.join(',')})`);
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error('[api] payku/webhook error:', e?.message || e);
+    return res.status(200).json({ ok: true }); // evitar reintentos agresivos
+  }
+});
+
+// GET /payku/webhook - para verificación/challenge
+router.get('/payku/webhook', async (req, res) => {
+  res.status(200).json({ ok: true, method: 'GET', query: req.query || {} });
+});
+
+/**
+ * GET /payku/status/:orderId — Verificar estado de pago por orderId (para el frontend)
+ */
+router.get('/payku/status/:orderId', async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    if (!orderId) return res.status(400).json({ error: 'missing_order_id' });
+    if (!pool) return res.status(503).json({ error: 'no_database' });
+
+    await ensureSchema();
+    const r = await pool.query(
+      'SELECT id, order_id, payku_transaction_id, status, amount, email, created_at FROM payku_transactions WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1',
+      [orderId]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
+
+    const tx = r.rows[0];
+    // Si hay payku_transaction_id, consultar estado actualizado
+    let fresh = null;
+    if (tx.payku_transaction_id) {
+      try {
+        fresh = await getPaykuTransaction(tx.payku_transaction_id);
+      } catch {}
+    }
+
+    return res.json({
+      ok: true,
+      order_id: tx.order_id,
+      status: fresh?.status || tx.status,
+      amount: tx.amount,
+      email: tx.email,
+      payku_status: fresh?.status || null
+    });
+  } catch (e) {
+    console.error('[api] payku/status error:', e?.message || e);
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 

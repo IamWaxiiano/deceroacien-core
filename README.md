@@ -57,3 +57,4 @@ verificar debug-auth.js & components.js
 crear autenticacion real auth.js
 
 
+## revisar nuevos archivos de payku y revisar optimización de estilos en nuevos archivos.

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pago con Payku – De Cero a Cien</title>
+  <meta name="description" content="Página de pago vía Payku para productos De Cero a Cien." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/assets/styles/tailwind.css">
+  <link rel="stylesheet" href="/assets/styles/common.css">
+  <link rel="stylesheet" href="/assets/styles/mobile.css">
+  <link rel="icon" href="/assets/logo_de_cero_a_cien.png" />
+</head>
+<body class="bg-gray-900 text-gray-100">
+  <main class="min-h-screen">
+    <section class="container mx-auto px-4 py-10 max-w-lg">
+      <h1 class="text-2xl font-bold mb-2">Pago con Payku</h1>
+      <p class="text-gray-300 mb-6">Completa tu compra de forma segura vía Payku (Webpay y más medios de pago chilenos).</p>
+
+      <!-- Producto de prueba -->
+      <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="font-semibold" id="productTitle">Compra de prueba (CLP 2.000)</p>
+            <p class="text-sm text-gray-400">SKU: <span id="productSku">test.clp2000</span></p>
+          </div>
+          <div id="price" class="text-lg font-semibold">$2.000</div>
+        </div>
+      </div>
+
+      <!-- Email para invitados -->
+      <div id="guestEmailSection" class="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-6">
+        <label for="emailInput" class="block text-sm font-medium text-gray-300 mb-2">
+          Tu email <span class="text-gray-500">(obligatorio para recibir tu acceso)</span>
+        </label>
+        <input type="email" id="emailInput" placeholder="tu@email.com"
+          class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        <p class="text-xs text-gray-500 mt-1">Si ya tienes cuenta, usa el mismo email. Si no, se creará acceso automático al registrarte.</p>
+      </div>
+
+      <!-- Botón de pago -->
+      <button id="buyBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Pagar con Payku
+      </button>
+
+      <p class="text-xs text-gray-400 mt-3 text-center">
+        Tras el pago serás redirigido de vuelta y se otorgará acceso automáticamente.
+      </p>
+
+      <!-- Info adicional -->
+      <div class="mt-8 text-sm text-gray-300 space-y-2">
+        <p class="font-semibold">¿Cómo funciona?</p>
+        <ul class="list-disc pl-5 space-y-1 text-gray-400">
+          <li>Serás redirigido a la pasarela segura de Payku.</li>
+          <li>Puedes pagar con <span class="font-medium">Webpay, transferencia bancaria</span> y otros medios.</li>
+          <li>Si aún no tienes cuenta, recibirás un email con instrucciones para crear tu acceso.</li>
+          <li>Si ya tienes cuenta, el acceso se activa automáticamente.</li>
+        </ul>
+      </div>
+
+      <!-- Estado (para retorno) -->
+      <div id="statusSection" class="hidden mt-6 bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <p class="font-semibold mb-2">Estado del pago</p>
+        <p id="statusText" class="text-gray-300"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/assets/js/pricing.js"></script>
+  <script src="/assets/js/payku-payments.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const sku = 'test.clp2000';
+
+      // Cargar precio desde pricing.json
+      try {
+        await Pricing.load();
+        const p = Pricing.getProduct(sku);
+        if (p) {
+          document.getElementById('price').textContent = Pricing.format(p.unit_price);
+          document.getElementById('productTitle').textContent = p.title || 'Producto';
+        }
+      } catch {}
+
+      // Si el usuario está autenticado, pre-llenar email y ocultar campo
+      try {
+        if (window.authManager && window.authManager.isUserAuthenticated && window.authManager.isUserAuthenticated()) {
+          const user = window.authManager.getCurrentUser();
+          if (user && user.email) {
+            document.getElementById('emailInput').value = user.email;
+            document.getElementById('guestEmailSection').style.display = 'none';
+          }
+        }
+      } catch {}
+
+      // Verificar si venimos de un retorno de pago
+      const params = new URLSearchParams(window.location.search);
+      const gateway = params.get('gateway');
+      const orderId = params.get('order');
+      if (gateway === 'payku' && orderId) {
+        const statusSection = document.getElementById('statusSection');
+        const statusText = document.getElementById('statusText');
+        statusSection.classList.remove('hidden');
+        statusText.textContent = 'Verificando estado del pago...';
+
+        try {
+          const result = await PaykuPayments.checkStatus(orderId);
+          if (result && result.ok) {
+            const s = (result.status || '').toLowerCase();
+            if (s === 'success' || s === 'approved' || s === 'paid') {
+              statusText.innerHTML = '<span class="text-green-400 font-semibold">✓ Pago aprobado.</span> Revisa tu email para instrucciones de acceso.';
+            } else if (s === 'pending') {
+              statusText.innerHTML = '<span class="text-yellow-400 font-semibold">⏳ Pago pendiente.</span> Recibirás un email cuando se confirme.';
+            } else {
+              statusText.innerHTML = `<span class="text-red-400 font-semibold">✗ Estado: ${result.status || 'desconocido'}.</span> Si crees que es un error, contáctanos.`;
+            }
+          } else {
+            statusText.textContent = 'No se pudo verificar el estado. Intenta nuevamente en unos minutos.';
+          }
+        } catch {
+          statusText.textContent = 'Error verificando el estado del pago.';
+        }
+      }
+
+      // Botón de pago
+      const btn = document.getElementById('buyBtn');
+      btn.addEventListener('click', async () => {
+        const emailInput = document.getElementById('emailInput');
+        const email = emailInput ? emailInput.value.trim() : null;
+
+        if (!email || !email.includes('@')) {
+          alert('Por favor, ingresa un email válido.');
+          if (emailInput) emailInput.focus();
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+
+        try {
+          await Pricing.load();
+        } catch {}
+
+        try {
+          await PaykuPayments.startCheckout({ items: [sku], email });
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = 'Pagar con Payku';
+        }
+      });
+    });
+  </script>
+
+  <script src="/assets/js/components.js"></script>
+</body>
+</html>
